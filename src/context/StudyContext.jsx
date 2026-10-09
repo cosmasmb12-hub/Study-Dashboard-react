@@ -100,9 +100,10 @@ export function StudyProvider({ children }) {
   useEffect(() => localStorage.setItem('react_study_widgets_apple_v1', JSON.stringify(widgets)), [widgets]);
 
   // ==========================================
-  // BULLETPROOF CLOUD SYNC (REALTIME + WINDOW FOCUS FALLBACK)
+  // CLOUD SYNC ENGINE
   // ==========================================
   function applyStateFromCloud(cloud) {
+    if (!cloud) return;
     isRemoteUpdate.current = true;
     if (cloud.todayStudyTime !== undefined) setTodayStudyTime(cloud.todayStudyTime);
     if (cloud.totalTime !== undefined) setTotalTime(cloud.totalTime);
@@ -114,107 +115,91 @@ export function StudyProvider({ children }) {
     if (cloud.loggedMarks) setLoggedMarks(cloud.loggedMarks);
     if (cloud.spacedDeck) setSpacedDeck(cloud.spacedDeck);
     if (cloud.widgets) setWidgets(cloud.widgets);
-    setTimeout(() => { isRemoteUpdate.current = false; }, 300);
+    setTimeout(() => { isRemoteUpdate.current = false; }, 400);
   }
 
+  // Pull latest from cloud
   const loadCloudState = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      setSyncStatus('offline');
+      return;
+    }
     try {
+      // Use .maybeSingle() so empty tables don't throw an error
       const { data, error } = await supabase
         .from('study_state')
         .select('data, updated_at')
         .eq('id', 'user_data')
-        .single();
+        .maybeSingle();
 
-      if (data && data.data && !error) {
+      if (!error && data && data.data) {
         applyStateFromCloud(data.data);
         setSyncStatus('synced');
+      } else if (!error && !data) {
+        // Table is empty: initialize it with current local state
+        pushStateToCloud();
       }
     } catch (_) {
       setSyncStatus('offline');
     }
   }, []);
 
-  useEffect(() => {
+  // Force Push function
+  const pushStateToCloud = useCallback(async () => {
     if (!supabase) return;
+    setSyncStatus('saving');
+    try {
+      const payload = {
+        todayStudyTime,
+        totalTime,
+        currentStreak,
+        subjectTimes,
+        studyHistory,
+        sessionLogs,
+        subjectGrades,
+        loggedMarks,
+        spacedDeck,
+        widgets,
+      };
 
-    // 1. Initial pull
+      const { error } = await supabase
+        .from('study_state')
+        .upsert({
+          id: 'user_data',
+          data: payload,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (!error) setSyncStatus('synced');
+    } catch (_) {
+      setSyncStatus('offline');
+    }
+  }, [todayStudyTime, totalTime, currentStreak, subjectTimes, studyHistory, sessionLogs, subjectGrades, loggedMarks, spacedDeck, widgets]);
+
+  useEffect(() => {
     loadCloudState();
 
-    // 2. Fetch whenever you unlock your phone or switch back to this tab
     const handleFocus = () => loadCloudState();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') loadCloudState();
     });
 
-    // 3. Realtime WebSocket listener (with silent fallback if blocked)
-    let channel;
-    try {
-      channel = supabase
-        .channel('study-sync-channel')
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'study_state', filter: 'id=eq.user_data' },
-          (payload) => {
-            if (payload?.new?.data) {
-              applyStateFromCloud(payload.new.data);
-              setSyncStatus('synced');
-            }
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            setSyncStatus('synced');
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            console.warn('Realtime resting; focus fallback active.');
-          }
-        });
-    } catch (_) {}
-
     return () => {
       window.removeEventListener('focus', handleFocus);
-      if (channel) supabase.removeChannel(channel);
     };
   }, [loadCloudState]);
 
-  // Debounced Cloud Push
+  // Debounced auto-save to cloud on state change
   const syncTimeoutRef = useRef(null);
   useEffect(() => {
     if (!supabase || isRemoteUpdate.current) return;
 
-    setSyncStatus('saving');
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        const payload = {
-          todayStudyTime,
-          totalTime,
-          currentStreak,
-          subjectTimes,
-          studyHistory,
-          sessionLogs,
-          subjectGrades,
-          loggedMarks,
-          spacedDeck,
-          widgets,
-        };
-
-        const { error } = await supabase
-          .from('study_state')
-          .upsert({
-            id: 'user_data',
-            data: payload,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (!error) setSyncStatus('synced');
-      } catch (err) {
-        setSyncStatus('offline');
-      }
+    syncTimeoutRef.current = setTimeout(() => {
+      pushStateToCloud();
     }, 600);
-  }, [todayStudyTime, totalTime, currentStreak, subjectTimes, studyHistory, sessionLogs, subjectGrades, loggedMarks, spacedDeck, widgets]);
+  }, [pushStateToCloud]);
 
   // ==========================================
   // DASHBOARD ACTIONS
@@ -394,7 +379,8 @@ export function StudyProvider({ children }) {
       reviewSpacedCard,
       importLegacyData,
       sounds,
-      syncStatus
+      syncStatus,
+      forceSync: pushStateToCloud
     }}>
       {children}
     </StudyContext.Provider>
