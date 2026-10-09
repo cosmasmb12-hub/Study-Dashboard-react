@@ -88,7 +88,7 @@ export function StudyProvider({ children }) {
   const [widgets, setWidgets] = useState(() => safeLoad('react_study_widgets_apple_v1', INITIAL_WIDGETS));
   const [isEditing, setIsEditing] = useState(false);
 
-  // Sync state to local storage
+  // Sync to local storage
   useEffect(() => localStorage.setItem('StudyTime', todayStudyTime), [todayStudyTime]);
   useEffect(() => localStorage.setItem('StudyTimeTotal', totalTime), [totalTime]);
   useEffect(() => localStorage.setItem('currentStreak', currentStreak), [currentStreak]);
@@ -100,51 +100,8 @@ export function StudyProvider({ children }) {
   useEffect(() => localStorage.setItem('react_study_widgets_apple_v1', JSON.stringify(widgets)), [widgets]);
 
   // ==========================================
-  // SUPABASE REALTIME & CLOUD SYNC ENGINE
+  // BULLETPROOF CLOUD SYNC (REALTIME + WINDOW FOCUS FALLBACK)
   // ==========================================
-  // 1. Initial Cloud Pull & WebSocket Subscription
-  useEffect(() => {
-    if (!supabase) return;
-
-    async function loadCloudState() {
-      try {
-        const { data, error } = await supabase
-          .from('study_state')
-          .select('data, updated_at')
-          .eq('id', 'user_data')
-          .single();
-
-        if (data && data.data && !error) {
-          applyStateFromCloud(data.data);
-          setSyncStatus('synced');
-        }
-      } catch (err) {
-        console.warn('Initial cloud sync notice:', err);
-      }
-    }
-
-    loadCloudState();
-
-    // Subscribe to live changes made on your other device
-    const channel = supabase
-      .channel('public:study_state')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'study_state', filter: 'id=eq.user_data' },
-        (payload) => {
-          if (payload.new && payload.new.data) {
-            applyStateFromCloud(payload.new.data);
-            setSyncStatus('synced');
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   function applyStateFromCloud(cloud) {
     isRemoteUpdate.current = true;
     if (cloud.todayStudyTime !== undefined) setTodayStudyTime(cloud.todayStudyTime);
@@ -160,7 +117,68 @@ export function StudyProvider({ children }) {
     setTimeout(() => { isRemoteUpdate.current = false; }, 300);
   }
 
-  // 2. Debounced Cloud Push
+  const loadCloudState = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('study_state')
+        .select('data, updated_at')
+        .eq('id', 'user_data')
+        .single();
+
+      if (data && data.data && !error) {
+        applyStateFromCloud(data.data);
+        setSyncStatus('synced');
+      }
+    } catch (_) {
+      setSyncStatus('offline');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    // 1. Initial pull
+    loadCloudState();
+
+    // 2. Fetch whenever you unlock your phone or switch back to this tab
+    const handleFocus = () => loadCloudState();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadCloudState();
+    });
+
+    // 3. Realtime WebSocket listener (with silent fallback if blocked)
+    let channel;
+    try {
+      channel = supabase
+        .channel('study-sync-channel')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'study_state', filter: 'id=eq.user_data' },
+          (payload) => {
+            if (payload?.new?.data) {
+              applyStateFromCloud(payload.new.data);
+              setSyncStatus('synced');
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setSyncStatus('synced');
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            console.warn('Realtime resting; focus fallback active.');
+          }
+        });
+    } catch (_) {}
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [loadCloudState]);
+
+  // Debounced Cloud Push
   const syncTimeoutRef = useRef(null);
   useEffect(() => {
     if (!supabase || isRemoteUpdate.current) return;
@@ -193,10 +211,9 @@ export function StudyProvider({ children }) {
 
         if (!error) setSyncStatus('synced');
       } catch (err) {
-        console.warn('Sync failed:', err);
         setSyncStatus('offline');
       }
-    }, 600); // 600ms debounce
+    }, 600);
   }, [todayStudyTime, totalTime, currentStreak, subjectTimes, studyHistory, sessionLogs, subjectGrades, loggedMarks, spacedDeck, widgets]);
 
   // ==========================================
