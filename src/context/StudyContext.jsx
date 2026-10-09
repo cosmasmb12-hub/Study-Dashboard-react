@@ -145,8 +145,12 @@ export function StudyProvider({ children }) {
   }, []);
 
   // Force Push function
+// Force Push function
   const pushStateToCloud = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      setSyncStatus('offline');
+      return;
+    }
     setSyncStatus('saving');
     try {
       const payload = {
@@ -162,16 +166,25 @@ export function StudyProvider({ children }) {
         widgets,
       };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('study_state')
-        .upsert({
-          id: 'user_data',
-          data: payload,
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            id: 'user_data',
+            data: payload,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
 
-      if (!error) setSyncStatus('synced');
-    } catch (_) {
+      if (error) {
+        console.error('⚠️ [Supabase Save Error]:', error.message || error);
+        setSyncStatus('offline');
+      } else {
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      console.error('⚠️ [Network Error]:', err);
       setSyncStatus('offline');
     }
   }, [todayStudyTime, totalTime, currentStreak, subjectTimes, studyHistory, sessionLogs, subjectGrades, loggedMarks, spacedDeck, widgets]);
