@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { INITIAL_WIDGETS, QUOTES } from '../data/initialData';
 import { useSound } from '../hooks/useSound';
+import { supabase } from '../lib/supabase';
 
 const StudyContext = createContext(null);
 
@@ -24,8 +25,10 @@ function safeLoad(key, fallback) {
 export function StudyProvider({ children }) {
   const sounds = useSound();
   const todayStr = useMemo(() => getLocalDateString(), []);
+  const [syncStatus, setSyncStatus] = useState('offline'); // 'synced' | 'saving' | 'offline'
+  const isRemoteUpdate = useRef(false);
 
-  // 1. Stats State
+  // 1. Core State
   const [todayStudyTime, setTodayStudyTime] = useState(() => Number(localStorage.getItem('StudyTime')) || 0);
   const [totalTime, setTotalTime] = useState(() => Number(localStorage.getItem('StudyTimeTotal')) || 0);
   const [currentStreak, setCurrentStreak] = useState(() => Number(localStorage.getItem('currentStreak')) || 0);
@@ -57,17 +60,15 @@ export function StudyProvider({ children }) {
     PE: Number(localStorage.getItem('PE')) || 0
   }));
 
-  // 4. Analytics, Logs & Assessment Marks
+  // 4. Analytics, Logs & Marks
   const [studyHistory, setStudyHistory] = useState(() => safeLoad('studyHistoryMap', {}));
   const [sessionLogs, setSessionLogs] = useState(() => safeLoad('study_session_logs', []));
   const [undoStack, setUndoStack] = useState([]);
 
-  // Subject Grades: { Maths: [80, 85], ... }
   const [subjectGrades, setSubjectGrades] = useState(() =>
     safeLoad('subjectGradesMap', { Maths: [82], Physics: [64], Computing: [76], English: [68], PE: [55] })
   );
 
-  // Assessment Log Entries: [{ id, subject, title, got, total, percent, date }]
   const [loggedMarks, setLoggedMarks] = useState(() =>
     safeLoad('logged_assessment_marks', [
       { id: 'm-1', subject: 'Maths', title: 'Calculus Prelim', got: 72, total: 90, percent: 80, date: todayStr },
@@ -75,7 +76,6 @@ export function StudyProvider({ children }) {
     ])
   );
 
-  // 5. SM-2 Spaced Repetition Deck
   const [spacedDeck, setSpacedDeck] = useState(() =>
     safeLoad('spacedRepetitionDeck', [
       { id: 'sr-1', subject: 'Physics', topic: 'Doppler Effect Equation', interval: 1, repetition: 0, easeFactor: 2.5, dueDate: todayStr },
@@ -88,7 +88,7 @@ export function StudyProvider({ children }) {
   const [widgets, setWidgets] = useState(() => safeLoad('react_study_widgets_apple_v1', INITIAL_WIDGETS));
   const [isEditing, setIsEditing] = useState(false);
 
-  // LocalStorage Sync
+  // Sync state to local storage
   useEffect(() => localStorage.setItem('StudyTime', todayStudyTime), [todayStudyTime]);
   useEffect(() => localStorage.setItem('StudyTimeTotal', totalTime), [totalTime]);
   useEffect(() => localStorage.setItem('currentStreak', currentStreak), [currentStreak]);
@@ -99,10 +99,112 @@ export function StudyProvider({ children }) {
   useEffect(() => localStorage.setItem('spacedRepetitionDeck', JSON.stringify(spacedDeck)), [spacedDeck]);
   useEffect(() => localStorage.setItem('react_study_widgets_apple_v1', JSON.stringify(widgets)), [widgets]);
 
+  // ==========================================
+  // SUPABASE REALTIME & CLOUD SYNC ENGINE
+  // ==========================================
+  // 1. Initial Cloud Pull & WebSocket Subscription
+  useEffect(() => {
+    if (!supabase) return;
+
+    async function loadCloudState() {
+      try {
+        const { data, error } = await supabase
+          .from('study_state')
+          .select('data, updated_at')
+          .eq('id', 'user_data')
+          .single();
+
+        if (data && data.data && !error) {
+          applyStateFromCloud(data.data);
+          setSyncStatus('synced');
+        }
+      } catch (err) {
+        console.warn('Initial cloud sync notice:', err);
+      }
+    }
+
+    loadCloudState();
+
+    // Subscribe to live changes made on your other device
+    const channel = supabase
+      .channel('public:study_state')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'study_state', filter: 'id=eq.user_data' },
+        (payload) => {
+          if (payload.new && payload.new.data) {
+            applyStateFromCloud(payload.new.data);
+            setSyncStatus('synced');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  function applyStateFromCloud(cloud) {
+    isRemoteUpdate.current = true;
+    if (cloud.todayStudyTime !== undefined) setTodayStudyTime(cloud.todayStudyTime);
+    if (cloud.totalTime !== undefined) setTotalTime(cloud.totalTime);
+    if (cloud.currentStreak !== undefined) setCurrentStreak(cloud.currentStreak);
+    if (cloud.subjectTimes) setSubjectTimes(cloud.subjectTimes);
+    if (cloud.studyHistory) setStudyHistory(cloud.studyHistory);
+    if (cloud.sessionLogs) setSessionLogs(cloud.sessionLogs);
+    if (cloud.subjectGrades) setSubjectGrades(cloud.subjectGrades);
+    if (cloud.loggedMarks) setLoggedMarks(cloud.loggedMarks);
+    if (cloud.spacedDeck) setSpacedDeck(cloud.spacedDeck);
+    if (cloud.widgets) setWidgets(cloud.widgets);
+    setTimeout(() => { isRemoteUpdate.current = false; }, 300);
+  }
+
+  // 2. Debounced Cloud Push
+  const syncTimeoutRef = useRef(null);
+  useEffect(() => {
+    if (!supabase || isRemoteUpdate.current) return;
+
+    setSyncStatus('saving');
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        const payload = {
+          todayStudyTime,
+          totalTime,
+          currentStreak,
+          subjectTimes,
+          studyHistory,
+          sessionLogs,
+          subjectGrades,
+          loggedMarks,
+          spacedDeck,
+          widgets,
+        };
+
+        const { error } = await supabase
+          .from('study_state')
+          .upsert({
+            id: 'user_data',
+            data: payload,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (!error) setSyncStatus('synced');
+      } catch (err) {
+        console.warn('Sync failed:', err);
+        setSyncStatus('offline');
+      }
+    }, 600); // 600ms debounce
+  }, [todayStudyTime, totalTime, currentStreak, subjectTimes, studyHistory, sessionLogs, subjectGrades, loggedMarks, spacedDeck, widgets]);
+
+  // ==========================================
+  // DASHBOARD ACTIONS
+  // ==========================================
   const dayOfWeek = new Date().getDay();
   const targetedStudyTime = dayOfWeek === 5 || dayOfWeek === 6 ? 2 : 3;
 
-  // Study Logging
   const logStudySession = useCallback(({ subject, topic, minutes }) => {
     sounds.playSuccess();
     try { confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 } }); } catch (_) {}
@@ -154,7 +256,6 @@ export function StudyProvider({ children }) {
     sounds.playClick();
   }, [undoStack, sounds]);
 
-  // Log Marks Functionality
   const addMarkEntry = useCallback(({ subject, title, got, total }) => {
     sounds.playSuccess();
     try { confetti({ particleCount: 50, spread: 50 }); } catch (_) {}
@@ -171,8 +272,6 @@ export function StudyProvider({ children }) {
     };
 
     setLoggedMarks((prev) => [newEntry, ...prev]);
-
-    // Feed directly to Grade Trajectory
     setSubjectGrades((prev) => ({
       ...prev,
       [subject]: [...(prev[subject] || []), pct]
@@ -184,7 +283,6 @@ export function StudyProvider({ children }) {
     setLoggedMarks((prev) => prev.filter((m) => m.id !== id));
   }, [sounds]);
 
-  // SM-2 Review
   const reviewSpacedCard = useCallback((cardId, rating) => {
     sounds.playSuccess();
     setSpacedDeck((prev) => prev.map((card) => {
@@ -278,7 +376,8 @@ export function StudyProvider({ children }) {
       undoLastSession,
       reviewSpacedCard,
       importLegacyData,
-      sounds
+      sounds,
+      syncStatus
     }}>
       {children}
     </StudyContext.Provider>
