@@ -1,0 +1,62 @@
+export const QUOTES = [
+  'The two most important days in your life are the day you are born... and the day you find out why.',
+  "You don't have to become something you're not, to be better than you were.",
+  "If you want more time, freedom, and energy, start saying no.",
+  "If a window of opportunity appears, don't pull down the shade.",
+  "A year from now you may wish you had started today.",
+  "Self-discipline is doing what is right instead of doing what you feel like doing.",
+  "Don't dream of winning, train for it!",
+  "The most dangerous distractions are the ones you love, but that don't love you back.",
+  "If you get tired, learn to rest, not to quit.",
+  "A mask won't hide who you are inside.",
+  "Everything I'm not makes me everything I am",
+  "Shoot for the stars, so if you fall you land on a cloud.",
+  "Even if you are not ready for the day... It cannot always be night",
+  "Sometimes you gotta close a door to open a window",
+  'I hate wasted potential',
+  'Keep moving forward, Watch out for the potholes',
+  'Keep Writing, Keep Living, Keep Loving',
+  'One eye on my opps, two eyes on my friends, cuz atleast man knows their intentions.',
+  'No weapons fashioned against me shall prosper',
+  'Cast all your anxieties on him, because he cares for you',
+  'Fear not, for I am with you; be not dismayed, for I am your God',
+  'I can do all things through Christ who strengthens me',
+  'At some point, you gotta decide for yourself who you gonna be. Cant let nobody make that decision for you.',
+  "Talent without working hard is nothing.",
+  "For nothing will be impossible with God.",
+  "Do not be overcome by evil, but overcome evil with good.",
+  "Whatever you do, work at it with all your heart.",
+  "Anyone can wear the mask.",
+  "It's all possible.",
+  "Nobody normal ever accomplished anything meaningful in this world.",
+  "You are probably going to be a very successful computer programmer.",
+  "If you're failing to prepare, you're preparing to fail.",
+  "The secret of getting ahead is getting started.",
+  "Hard work beats talent when talent doesn't work hard.",
+  "It always seems impossible until it's done.",
+  "Don't count the days, make the days count."
+];
+
+export const SUBJECTS_DATA = [
+  { name: 'Maths', key: 'MATHS', topics: ['Straight Line', 'Calculus', 'Recurrence', 'Trigonometry', 'Logarithms', 'Vectors', 'Wave Function'] },
+  { name: 'English', key: 'ENGLISH', topics: ['1984 by George Orwell', 'RUAE Practice', 'Critical Essay', 'Poetry Analysis'] },
+  { name: 'Physics', key: 'PHYSICS', topics: ['Motion & Forces', 'Projectiles', 'Collisions & Explosions', 'Doppler Effect', 'Special Relativity', 'Wave Particle Duality'] },
+  { name: 'Computing', key: 'COMPUTING', topics: ['Software Development', 'Python Data Structures', 'Algorithms', 'Databases & SQL', 'Computer Systems Security'] },
+  { name: 'PE', key: 'PE', topics: ['Physical Factors', 'Emotional Factors', 'Mental Factors', 'Social Factors', 'Training Programs & Data'] }
+];
+
+export const INITIAL_WIDGETS = [
+  { id: 'widget-task', col: 2, row: 1, visible: true, title: 'Current Task' },
+  { id: 'widget-mark-logger', col: 2, row: 2, visible: true, title: 'Log Marks & Assessments' },
+  { id: 'widget-grade-tracker', col: 2, row: 2, visible: true, title: 'Grade Trajectory' },
+  { id: 'widget-pomodoro', col: 2, row: 1, visible: true, title: 'Pomodoro Timer' },
+  { id: 'widget-progress', col: 2, row: 1, visible: true, title: 'Daily Progress' },
+  { id: 'widget-spaced-rep', col: 2, row: 1, visible: true, title: 'Spaced Repetition' },
+  { id: 'widget-interleaving', col: 2, row: 1, visible: true, title: 'Interleaving Planner' },
+  { id: 'widget-heatmap', col: 2, row: 1, visible: true, title: '28-Day Consistency' },
+  { id: 'widget-roi-balancer', col: 2, row: 1, visible: true, title: 'Study ROI' },
+  { id: 'widget-quote', col: 2, row: 1, visible: true, title: 'Daily Quote' },
+  { id: 'widget-total-time', col: 1, row: 1, visible: true, title: 'Total Time' },
+  { id: 'widget-logs', col: 2, row: 1, visible: true, title: 'Recent Sessions' },
+  { id: 'widget-breakdown', col: 2, row: 1, visible: true, title: 'Time Breakdown' }
+];

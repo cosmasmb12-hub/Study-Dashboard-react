@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* 1. Geist (Universal UI) + Fraunces (Quotes exclusively) */
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Geist:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&display=swap');
+
+@theme {
+  --color-accent: #008fd2;
+  --color-accent-hover: #007bb5;
+  --color-accent-muted: rgba(0, 143, 210, 0.15);
+
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Geist Mono", monospace;
+  --font-serif: "Fraunces", serif;
+
+  --radius-ios: 28px;
+  --radius-ios-lg: 34px;
+}
+
+@layer base {
+  body {
+    background-color: #060608;
+    color: #f4f4f5;
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Apple Squircle Card with 28px Radii */
+.apple-widget-card {
+  background: rgba(14, 14, 18, 0.72);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-ios);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.apple-widget-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Jiggle Animation for Edit Mode */
+@keyframes ios-jiggle {
+  0% { transform: rotate(-0.55deg) scale(0.998); }
+  100% { transform: rotate(0.55deg) scale(1.002); }
+}
+
+.jiggle-card {
+  animation: ios-jiggle 0.25s infinite alternate ease-in-out;
+}
+.jiggle-card:nth-child(2n) { animation-delay: 0.06s; }
+.jiggle-card:nth-child(3n) { animation-delay: 0.12s; }
+
+/* Custom Inputs */
+.shadcn-input {
+  background-color: rgba(24, 24, 27, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  color: #f4f4f5;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.shadcn-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+/* Clean Custom Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
