@@ -355,13 +355,83 @@ export function StudyProvider({ children }) {
     });
   }, [sounds]);
 
-  const importLegacyData = useCallback((jsonString) => {
+// Diagnostic test when clicking the sync dot
+  const testConnection = useCallback(async () => {
+    if (!supabase) {
+      alert('❌ Supabase is not configured.\nCheck that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.');
+      return;
+    }
+    setSyncStatus('saving');
+    try {
+      const { data, error } = await supabase
+        .from('study_state')
+        .select('id, updated_at')
+        .eq('id', 'user_data')
+        .maybeSingle();
+
+      if (error) {
+        alert(`❌ Supabase Database Error:\n${error.message || JSON.stringify(error)}`);
+        setSyncStatus('offline');
+      } else {
+        alert('✅ Supabase connected successfully! Sync is active.');
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      alert(`❌ Connection Failed:\n${err.message || err}`);
+      setSyncStatus('offline');
+    }
+  }, []);
+
+  // Fixed Import: Immediately uploads to Supabase so your phone gets it!
+  const importLegacyData = useCallback(async (jsonString) => {
     try {
       const data = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+      
+      // 1. Save locally
       Object.entries(data).forEach(([k, v]) => localStorage.setItem(k, v));
+
+      // 2. Prepare payload
+      const payload = {
+        todayStudyTime: Number(data.StudyTime) || 0,
+        totalTime: Number(data.StudyTimeTotal) || 0,
+        currentStreak: Number(data.currentStreak) || 0,
+        subjectTimes: {
+          MATHS: Number(data.MATHS) || 0,
+          ENGLISH: Number(data.ENGLISH) || 0,
+          PHYSICS: Number(data.PHYSICS) || 0,
+          COMPUTING: Number(data.COMPUTING) || 0,
+          PE: Number(data.PE) || 0,
+        },
+        studyHistory: data.studyHistoryMap ? JSON.parse(data.studyHistoryMap) : {},
+        sessionLogs: data.study_session_logs ? JSON.parse(data.study_session_logs) : [],
+        subjectGrades: data.subjectGradesMap ? JSON.parse(data.subjectGradesMap) : {},
+        loggedMarks: data.logged_assessment_marks ? JSON.parse(data.logged_assessment_marks) : [],
+        spacedDeck: data.spacedRepetitionDeck ? JSON.parse(data.spacedRepetitionDeck) : [],
+        widgets: data.react_study_widgets_apple_v1 ? JSON.parse(data.react_study_widgets_apple_v1) : INITIAL_WIDGETS,
+      };
+
+      // 3. Upload directly to Supabase cloud
+      if (supabase) {
+        const { error } = await supabase
+          .from('study_state')
+          .upsert({
+            id: 'user_data',
+            data: payload,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+
+        if (error) {
+          alert(`⚠️ Imported locally, but cloud upload failed: ${error.message}`);
+        } else {
+          alert('✅ Data imported and uploaded to cloud! Your phone will now update.');
+        }
+      } else {
+        alert('✅ Data saved locally. (Connect Supabase to sync to phone)');
+      }
+
       window.location.reload();
-    } catch (_) {
-      alert('Invalid JSON data format');
+    } catch (err) {
+      alert(`❌ Invalid JSON data format: ${err.message}`);
     }
   }, []);
 
@@ -369,6 +439,7 @@ export function StudyProvider({ children }) {
     <StudyContext.Provider value={{
       todayStudyTime,
       totalTime,
+      testConnection,
       currentStreak,
       targetedStudyTime,
       subjectTimes,

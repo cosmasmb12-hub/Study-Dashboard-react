@@ -3,7 +3,7 @@ import { useStudy } from '../../context/StudyContext';
 import { Flame, Check, Plus, PlusCircle, Download, Cloud, RefreshCw } from 'lucide-react';
 
 export function FloatingIsland({ onOpenStudyModal, onOpenAddWidget }) {
-  const { currentStreak, isEditing, setIsEditing, importLegacyData, sounds, syncStatus, forceSync } = useStudy();
+const { currentStreak, isEditing, setIsEditing, importLegacyData, sounds, syncStatus, testConnection } = useStudy();
   const [showImport, setShowImport] = useState(false);
   const [importJson, setImportJson] = useState('');
 
@@ -33,15 +33,15 @@ export function FloatingIsland({ onOpenStudyModal, onOpenAddWidget }) {
         {/* Center / Right: Actions */}
         <div className="flex items-center gap-2">
           {/* Cloud Sync Status Indicator */}
-          <button
-            onClick={() => { sounds.playClick(); forceSync(); }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-white/5 transition-colors cursor-pointer text-zinc-400"
-            title={`Cloud Sync: ${syncStatus}. Tap to force sync.`}
-          >
-            {syncStatus === 'synced' && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
-            {syncStatus === 'saving' && <RefreshCw size={12} className="animate-spin text-amber-400" />}
-            {syncStatus === 'offline' && <span className="w-2 h-2 rounded-full bg-zinc-600" />}
-          </button>
+<button
+  onClick={() => { sounds.playClick(); testConnection(); }}
+  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-white/10 transition-colors cursor-pointer text-zinc-400"
+  title="Click to test cloud connection"
+>
+  {syncStatus === 'synced' && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
+  {syncStatus === 'saving' && <RefreshCw size={12} className="animate-spin text-amber-400" />}
+  {syncStatus === 'offline' && <span className="w-2 h-2 rounded-full bg-zinc-600" />}
+</button>
 
           {/* Quick Log Session */}
           <button
